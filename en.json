@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "code": "en",
+    "name": "English"
+  },
+  "ui": {
+    "status_idle":        "Not connected",
+    "status_connecting":  "Connecting...",
+    "status_waiting":     "Waiting...",
+    "status_connected":   "P2P Connected",
+    "status_error":       "Connection error",
+
+    "hero_desc":          "Secret P2P chat. Share a 6-character room code. Nothing is stored.",
+    "choose_action":      "Get started",
+    "create_room":        "+ Create new room",
+    "join_room":          "Join room →",
+    "or":                 "or enter a room code to join",
+    "room_id_placeholder":"Enter 6-char code...",
+
+    "room_created":       "Room created",
+    "share_hint":         "Send this room code to the other person. Once they enter it, P2P connection is established automatically.",
+    "copy_id":            "📋 Copy code",
+    "copy_link":          "🔗 Copy link",
+    "waiting_peer":       "Waiting for the other person...",
+    "cancel":             "Cancel",
+    "p2p_note":           "Direct P2P connection · Signaling via PeerJS · No data stored",
+
+    "leave_room":         "Leave",
+    "clear_chat":         "Clear chat",
+    "clear_confirm":      "Clear all messages? This cannot be undone.",
+    "send":               "Send",
+    "msg_placeholder":    "Type a message... (Enter to send)",
+    "attach_file":        "Send file (max 20MB)",
+    "timeout_warning":    "⚠ Inactive — disconnecting in",
+
+    "dc_title":           "Room Closed",
+    "dc_desc":            "Connection lost. Messages and files deleted.",
+    "new_room":           "Create new room",
+
+    "sys_connected":      "✓ P2P connection established",
+    "sys_peer_joined":    "The other person joined",
+    "sys_peer_left":      "The other person left",
+    "sys_peer_blur":      "⚠ The other person is not looking at the screen",
+    "sys_peer_focus":     "The other person is back",
+    "sys_you_blur":       "Tab lost focus — the other person has been notified",
+    "sys_file_send":      "Sending file...",
+    "sys_file_done":      "✓ File sent",
+    "sys_file_ready":     "File ready to download",
+    "sys_relay":          "⚠ Using TURN relay (not direct P2P)",
+    "sys_cleared":        "Chat has been cleared",
+
+    "err_full":           "Room is full (max 2 people)",
+    "err_not_found":      "Room not found with this code",
+    "err_connect":        "Could not connect, please try again",
+    "err_no_chan":        "No DataChannel connection yet",
+    "err_file_size":      "File exceeds 20MB limit",
+    "copied":             "Copied!",
+
+    "me":                 "You",
+    "them":               "Other",
+    "download":           "Download"
+  }
+}

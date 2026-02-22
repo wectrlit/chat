@@ -1,0 +1,63 @@
+{
+  "meta": {
+    "code": "vi",
+    "name": "Tiếng Việt"
+  },
+  "ui": {
+    "status_idle":        "Chưa kết nối",
+    "status_connecting":  "Đang kết nối...",
+    "status_waiting":     "Đang chờ...",
+    "status_connected":   "Đã kết nối P2P",
+    "status_error":       "Lỗi kết nối",
+
+    "hero_desc":          "Chat P2P bí mật. Chỉ cần chia sẻ mã phòng 6 ký tự. Không lưu gì cả.",
+    "choose_action":      "Bắt đầu",
+    "create_room":        "+ Tạo phòng mới",
+    "join_room":          "Vào phòng →",
+    "or":                 "hoặc nhập mã phòng để vào",
+    "room_id_placeholder":"Nhập mã 6 ký tự...",
+
+    "room_created":       "Phòng đã tạo",
+    "share_hint":         "Gửi mã phòng này cho người kia. Sau khi họ nhập mã, kết nối P2P sẽ tự thiết lập.",
+    "copy_id":            "📋 Sao chép mã",
+    "copy_link":          "🔗 Sao chép link",
+    "waiting_peer":       "Đang chờ người kia vào...",
+    "cancel":             "Huỷ",
+    "p2p_note":           "Kết nối P2P trực tiếp · Signaling qua PeerJS · Không lưu dữ liệu",
+
+    "leave_room":         "Thoát",
+    "clear_chat":         "Xoá hội thoại",
+    "clear_confirm":      "Xoá toàn bộ tin nhắn? Hành động này không thể hoàn tác.",
+    "send":               "Gửi",
+    "msg_placeholder":    "Nhập tin nhắn... (Enter để gửi)",
+    "attach_file":        "Gửi file (tối đa 20MB)",
+    "timeout_warning":    "⚠ Không hoạt động — sẽ ngắt sau",
+
+    "dc_title":           "Phòng đã đóng",
+    "dc_desc":            "Kết nối bị ngắt. Tin nhắn và file đã xoá hoàn toàn.",
+    "new_room":           "Tạo phòng mới",
+
+    "sys_connected":      "✓ Kết nối P2P thành công",
+    "sys_peer_joined":    "Người kia đã vào phòng",
+    "sys_peer_left":      "Người kia đã rời phòng",
+    "sys_peer_blur":      "⚠ Người kia đang không xem màn hình",
+    "sys_peer_focus":     "Người kia đã quay lại",
+    "sys_you_blur":       "Tab đang mất focus — người kia đã được thông báo",
+    "sys_file_send":      "Đang gửi file...",
+    "sys_file_done":      "✓ Gửi file xong",
+    "sys_file_ready":     "File đã sẵn sàng tải xuống",
+    "sys_relay":          "⚠ Đang dùng TURN relay (không phải P2P trực tiếp)",
+    "sys_cleared":        "Hội thoại đã được xoá",
+
+    "err_full":           "Phòng đã đủ 2 người",
+    "err_not_found":      "Không tìm thấy phòng với mã này",
+    "err_connect":        "Không thể kết nối, thử lại sau",
+    "err_no_chan":        "Chưa có kết nối DataChannel",
+    "err_file_size":      "File vượt quá 20MB",
+    "copied":             "Đã sao chép!",
+
+    "me":                 "Bạn",
+    "them":               "Người kia",
+    "download":           "Tải xuống"
+  }
+}
