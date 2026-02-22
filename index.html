@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phòng chat bí mật chỉ 2 người</title>
+
+  <!--
+    ╔══════════════════════════════════════════════════════╗
+    ║  SecretLink — P2P Secret Chat                        ║
+    ║  Chỉ cần 1 file HTML, deploy lên GitHub Pages.      ║
+    ║  Signaling qua PeerJS public server (miễn phí).     ║
+    ║  Sau khi kết nối WebRTC, mọi dữ liệu đi P2P.       ║
+    ╚══════════════════════════════════════════════════════╝
+  -->
+
+  <!-- PeerJS — thư viện WebRTC + signaling tích hợp -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@300;400;600&display=swap');
+
+    :root {
+      --bg:          #080c10;
+      --surface:     #0d1117;
+      --surface2:    #161b22;
+      --surface3:    #1c2333;
+      --border:      #21262d;
+      --accent:      #00e5a0;
+      --accent-dim:  #00b47c;
+      --accent-glow: rgba(0,229,160,0.13);
+      --danger:      #ff4757;
+      --warn:        #ffa502;
+      --text:        #e6edf3;
+      --text-muted:  #7d8590;
+      --bubble-me:   #003d28;
+      --bubble-them: #141e2e;
+      --mono:        'JetBrains Mono', monospace;
+      --sans:        'Sora', sans-serif;
+      --tr:          0.18s ease;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: var(--sans); font-size: 15px; -webkit-font-smoothing: antialiased;
+    }
+    #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    /* ── Topbar ─────────────────────────────────────── */
+    #topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 52px; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0; z-index: 100; gap: 12px;
+    }
+    .logo { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--accent); letter-spacing:.04em; flex-shrink:0; }
+    .logo span { color: var(--text-muted); font-weight: 300; }
+    #topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    /* Status pill */
+    #status-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 11px; padding: 4px 10px;
+      border-radius: 20px; border: 1px solid var(--border);
+      color: var(--text-muted); background: var(--surface2);
+      white-space: nowrap; transition: var(--tr);
+    }
+    #status-pill .dot { width:7px; height:7px; border-radius:50%; background:var(--text-muted); flex-shrink:0; transition:var(--tr); }
+    #status-pill.connecting  { border-color:var(--warn);   color:var(--warn);   }
+    #status-pill.connecting .dot { background:var(--warn);   animation:blink 1s infinite; }
+    #status-pill.connected   { border-color:var(--accent); color:var(--accent); }
+    #status-pill.connected  .dot { background:var(--accent); box-shadow:0 0 7px var(--accent); animation:pulse 2s infinite; }
+    #status-pill.error       { border-color:var(--danger); color:var(--danger); }
+    #status-pill.error      .dot { background:var(--danger); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+
+    /* Lang select */
+    #lang-select {
+      font-family:var(--mono); font-size:12px; background:var(--surface2);
+      border:1px solid var(--border); color:var(--text); border-radius:6px;
+      padding:4px 8px; cursor:pointer; outline:none; transition:var(--tr);
+    }
+    #lang-select:hover { border-color:var(--accent); }
+
+    /* ── Alerts ─────────────────────────────────────── */
+    #alerts { flex-shrink:0; }
+    .alert-banner {
+      padding:8px 20px; font-size:12px; font-family:var(--mono);
+      display:flex; align-items:center; gap:8px; animation:slideDown .2s ease;
+    }
+    .alert-banner.warn   { background:rgba(255,165,2,.10); color:var(--warn);   border-bottom:1px solid rgba(255,165,2,.2); }
+    .alert-banner.danger { background:rgba(255,71,87,.10); color:var(--danger); border-bottom:1px solid rgba(255,71,87,.2); }
+    .alert-banner.info   { background:rgba(0,229,160,.08); color:var(--accent); border-bottom:1px solid rgba(0,229,160,.15); }
+    @keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+
+    /* ── Screens ─────────────────────────────────────── */
+    #main { flex:1; display:flex; overflow:hidden; position:relative; }
+    .screen {
+      position:absolute; inset:0; display:flex;
+      align-items:center; justify-content:center;
+      transition:opacity .3s ease, transform .3s ease; overflow-y:auto;
+    }
+    .screen.hidden { opacity:0; pointer-events:none; transform:scale(.97); }
+
+    /* ── Setup ───────────────────────────────────────── */
+    #setup-screen { background:var(--bg); padding:40px 20px; }
+    .setup-card { width:100%; max-width:440px; display:flex; flex-direction:column; gap:20px; }
+
+    .setup-hero { text-align:center; }
+    .setup-hero h1 { font-family:var(--mono); font-size:clamp(22px,4vw,30px); font-weight:700; color:var(--accent); letter-spacing:-.01em; margin-bottom:8px; }
+    .setup-hero p  { font-size:13px; color:var(--text-muted); line-height:1.65; }
+
+    .card {
+      background:var(--surface); border:1px solid var(--border); border-radius:14px;
+      padding:24px; display:flex; flex-direction:column; gap:14px;
+    }
+    .card-label { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); }
+
+    /* Buttons */
+    .btn {
+      display:inline-flex; align-items:center; justify-content:center;
+      gap:8px; padding:10px 18px; border-radius:8px; border:none;
+      cursor:pointer; font-family:var(--mono); font-size:13px; font-weight:500;
+      transition:var(--tr); white-space:nowrap;
+    }
+    .btn-primary   { background:var(--accent); color:#000; }
+    .btn-primary:hover   { background:var(--accent-dim); }
+    .btn-secondary { background:var(--surface2); border:1px solid var(--border); color:var(--text); }
+    .btn-secondary:hover { border-color:var(--accent); color:var(--accent); }
+    .btn-danger    { background:rgba(255,71,87,.12); border:1px solid rgba(255,71,87,.3); color:var(--danger); }
+    .btn-danger:hover    { background:rgba(255,71,87,.22); }
+    .btn:disabled  { opacity:.38; cursor:not-allowed; pointer-events:none; }
+    .btn-sm   { padding:6px 12px; font-size:11px; }
+    .btn-full { width:100%; }
+    .btn-icon { padding:8px; border-radius:7px; }
+
+    /* Input */
+    .input {
+      width:100%; background:var(--surface2); border:1px solid var(--border);
+      color:var(--text); border-radius:8px; padding:10px 14px;
+      font-family:var(--mono); font-size:13px; outline:none; transition:var(--tr);
+    }
+    .input:focus { border-color:var(--accent); }
+    .input::placeholder { color:var(--text-muted); }
+
+    /* Room ID display box */
+    .room-id-box {
+      background:var(--surface2); border:1px solid var(--accent);
+      border-radius:10px; padding:16px 18px;
+      font-family:var(--mono); font-size:20px; font-weight:700;
+      color:var(--accent); text-align:center; letter-spacing:.15em;
+      user-select:all; cursor:text; word-break:break-all;
+    }
+
+    .row  { display:flex; gap:10px; align-items:center; }
+    .flex-1 { flex:1; }
+
+    /* Spinner / waiting */
+    .waiting { display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; color:var(--text-muted); }
+    .spinner { width:16px; height:16px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent); animation:spin .8s linear infinite; flex-shrink:0; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    .divider { display:flex; align-items:center; gap:12px; color:var(--text-muted); font-size:11px; font-family:var(--mono); }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--border); }
+
+    /* ── Chat screen ─────────────────────────────────── */
+    #chat-screen { flex-direction:column; background:var(--bg); align-items:stretch; justify-content:flex-start; }
+
+    #chat-header {
+      display:flex; align-items:center; gap:10px;
+      padding:10px 18px; border-bottom:1px solid var(--border);
+      background:var(--surface); flex-shrink:0;
+    }
+    #chat-room-label { font-family:var(--mono); font-size:11px; color:var(--text-muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #chat-room-label span { color:var(--accent); font-weight:700; letter-spacing:.08em; }
+
+    #timeout-bar {
+      padding:6px 20px; background:rgba(255,165,2,.08);
+      border-bottom:1px solid rgba(255,165,2,.2);
+      font-family:var(--mono); font-size:11px; color:var(--warn);
+      text-align:center; display:none; flex-shrink:0;
+    }
+    #timeout-bar.visible { display:block; }
+
+    /* Messages */
+    #messages {
+      flex:1; overflow-y:auto; padding:20px;
+      display:flex; flex-direction:column; gap:10px; scroll-behavior:smooth;
+    }
+    #messages::-webkit-scrollbar { width:4px; }
+    #messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+
+    /* Chat bubbles */
+    .bw { display:flex; flex-direction:column; max-width:72%; animation:fadeUp .2s ease; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+    .bw.me   { align-self:flex-end;   align-items:flex-end;   }
+    .bw.them { align-self:flex-start; align-items:flex-start; }
+    .bubble { padding:10px 14px; border-radius:12px; font-size:14px; line-height:1.55; word-break:break-word; white-space:pre-wrap; }
+    .bw.me   .bubble { background:var(--bubble-me);   border:1px solid rgba(0,229,160,.15); border-bottom-right-radius:4px; }
+    .bw.them .bubble { background:var(--bubble-them); border:1px solid var(--border);        border-bottom-left-radius:4px;  }
+    .bmeta   { font-family:var(--mono); font-size:9px; color:var(--text-muted); margin-top:3px; padding:0 4px; }
+
+    /* System messages */
+    .sys {
+      align-self:center; font-family:var(--mono); font-size:10px;
+      color:var(--text-muted); padding:4px 14px;
+      border:1px solid var(--border); border-radius:20px;
+      background:var(--surface); max-width:90%; text-align:center;
+    }
+    .sys.ok     { color:var(--accent); border-color:rgba(0,229,160,.22); background:rgba(0,229,160,.07); }
+    .sys.warn   { color:var(--warn);   border-color:rgba(255,165,2,.22);  }
+    .sys.danger { color:var(--danger); border-color:rgba(255,71,87,.22);  }
+
+    /* File bubble */
+    .file-bw { display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface2); min-width:200px; max-width:100%; }
+    .file-ico { width:36px; height:36px; border-radius:8px; background:var(--accent-glow); border:1px solid rgba(0,229,160,.2); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+    .file-info { flex:1; overflow:hidden; min-width:0; }
+    .file-name { font-family:var(--mono); font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .file-size { font-family:var(--mono); font-size:10px; color:var(--text-muted); margin-top:2px; }
+    .file-prog { width:100%; height:3px; background:var(--border); border-radius:2px; margin-top:6px; overflow:hidden; }
+    .file-prog-bar { height:100%; background:var(--accent); border-radius:2px; transition:width .1s linear; width:0%; }
+
+    /* Chat input */
+    #chat-input-area { border-top:1px solid var(--border); background:var(--surface); padding:12px 18px; flex-shrink:0; }
+    #chat-input-row  { display:flex; gap:10px; align-items:flex-end; }
+    #msg-input {
+      flex:1; background:var(--surface2); border:1px solid var(--border);
+      color:var(--text); border-radius:10px; padding:10px 14px;
+      font-family:var(--sans); font-size:14px; outline:none;
+      resize:none; line-height:1.5; max-height:120px; overflow-y:auto; transition:var(--tr);
+    }
+    #msg-input:focus { border-color:var(--accent); }
+    #msg-input::placeholder { color:var(--text-muted); }
+
+    /* Disconnected overlay */
+    #dc-overlay {
+      position:fixed; inset:0; background:rgba(8,12,16,.94);
+      display:none; align-items:center; justify-content:center;
+      z-index:999; backdrop-filter:blur(6px);
+    }
+    #dc-overlay.visible { display:flex; }
+    .dc-card {
+      background:var(--surface); border:1px solid var(--danger); border-radius:16px;
+      padding:36px; text-align:center; max-width:360px; width:90%;
+      display:flex; flex-direction:column; gap:14px; animation:fadeUp .3s ease;
+    }
+    .dc-card h2 { font-size:18px; color:var(--danger); }
+    .dc-card p  { font-size:13px; color:var(--text-muted); line-height:1.6; }
+
+    /* Tooltip */
+    [data-tip] { position:relative; }
+    [data-tip]::after {
+      content:attr(data-tip); position:absolute; bottom:calc(100%+6px); left:50%;
+      transform:translateX(-50%); background:var(--surface3); border:1px solid var(--border);
+      color:var(--text); font-family:var(--mono); font-size:10px; padding:4px 8px;
+      border-radius:6px; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity .15s;
+    }
+    [data-tip]:hover::after { opacity:1; }
+
+    /* Utilities */
+    .hidden { display:none !important; }
+    .mt-2 { margin-top:6px; } .mt-4 { margin-top:12px; }
+    .w-full { width:100%; }
+    .text-muted  { color:var(--text-muted); }
+    .text-sm { font-size:12px; }
+
+    @keyframes copyFlash {
+      0%,100%{background:var(--surface2);color:var(--text)}
+      50%{background:var(--accent-glow);color:var(--accent)}
+    }
+    .flash { animation:copyFlash .4s ease; }
+    * { scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════════════ TOPBAR ══════════════════ -->
+  <div id="topbar">
+    <div class="logo">Secret chat <span>β</span></div>
+    <div id="topbar-right">
+      <div id="status-pill">
+        <span class="dot"></span>
+        <span id="status-text" data-i18n="ui.status_idle"></span>
+      </div>
+      <select id="lang-select" aria-label="Language">
+        <option value="vi">🇻🇳 Tiếng Việt</option>
+        <option value="en">🇺🇸 English</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="alerts"></div>
+
+  <!-- ══════════════════ MAIN ══════════════════ -->
+  <div id="main">
+
+    <!-- ── SETUP SCREEN ────────────────────────── -->
+    <div id="setup-screen" class="screen">
+      <div class="setup-card">
+
+        <div class="setup-hero">
+          <h1>Secret chat</h1>
+          <p data-i18n="ui.hero_desc"></p>
+        </div>
+
+        <!-- Thẻ chính: tạo / vào phòng -->
+        <div class="card" id="action-card">
+          <div class="card-label" data-i18n="ui.choose_action"></div>
+
+          <button class="btn btn-primary btn-full" id="btn-create" data-i18n="ui.create_room"></button>
+
+          <div class="divider" data-i18n="ui.or"></div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <input type="text" class="input" id="join-input"
+              data-i18n-placeholder="ui.room_id_placeholder"
+              autocomplete="off" spellcheck="false"
+              maxlength="12" style="text-transform:uppercase;letter-spacing:.1em;text-align:center;font-size:16px;" />
+            <button class="btn btn-secondary btn-full" id="btn-join" data-i18n="ui.join_room"></button>
+          </div>
+        </div>
+
+        <!-- Thẻ chờ: sau khi tạo phòng -->
+        <div class="card hidden" id="waiting-card">
+          <div class="card-label" data-i18n="ui.room_created"></div>
+          <p class="text-sm text-muted" data-i18n="ui.share_hint"></p>
+
+          <!-- Room ID lớn, dễ đọc -->
+          <div class="room-id-box" id="room-id-display">——</div>
+
+          <div class="row">
+            <button class="btn btn-secondary btn-sm flex-1" id="btn-copy-id"   data-i18n="ui.copy_id"></button>
+            <button class="btn btn-secondary btn-sm flex-1" id="btn-copy-link" data-i18n="ui.copy_link"></button>
+          </div>
+
+          <div class="waiting">
+            <div class="spinner"></div>
+            <span data-i18n="ui.waiting_peer"></span>
+          </div>
+
+          <button class="btn btn-danger btn-sm" id="btn-cancel" data-i18n="ui.cancel"></button>
+        </div>
+
+        <p class="text-sm text-muted" style="text-align:center;line-height:1.7;" data-i18n="ui.p2p_note"></p>
+      </div>
+    </div>
+
+    <!-- ── CHAT SCREEN ──────────────────────────── -->
+    <div id="chat-screen" class="screen hidden">
+      <div id="chat-header">
+        <div id="chat-room-label">Room: <span id="chat-room-val">—</span></div>
+        <button class="btn btn-secondary btn-icon btn-sm" id="btn-attach" data-tip="">📎</button>
+        <button class="btn btn-danger btn-sm" id="btn-disconnect" data-i18n="ui.leave_room"></button>
+        <input type="file" id="file-input" class="hidden" />
+      </div>
+
+      <div id="timeout-bar">
+        <span data-i18n="ui.timeout_warning"></span>&nbsp;<strong id="countdown">60</strong>s
+      </div>
+
+      <div id="messages"></div>
+
+      <div id="chat-input-area">
+        <div id="chat-input-row">
+          <textarea id="msg-input" rows="1" data-i18n-placeholder="ui.msg_placeholder"></textarea>
+          <button class="btn btn-primary" id="btn-send" data-i18n="ui.send"></button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#main -->
+</div><!-- /#app -->
+
+<!-- Disconnected overlay -->
+<div id="dc-overlay">
+  <div class="dc-card">
+    <div style="font-size:40px">💔</div>
+    <h2 data-i18n="ui.dc_title"></h2>
+    <p  data-i18n="ui.dc_desc"></p>
+    <button class="btn btn-primary w-full" id="btn-restart" data-i18n="ui.new_room"></button>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   SecretLink — Client (PeerJS edition)
+   ────────────────────────────────────────────────────────────────
+   Không cần server riêng. PeerJS public server xử lý signaling.
+   Sau khi WebRTC DataChannel mở, mọi dữ liệu đi thẳng P2P.
+
+   §1  CONFIG & i18n
+   §2  UI helpers
+   §3  PeerJS / WebRTC logic
+   §4  File transfer
+   §5  Heartbeat
+   §6  Inactivity / timeout
+   §7  DevTools detection
+   §8  Event listeners
+   §9  Boot
+   ================================================================ */
+
+/* ────────────────────────────────────────────────────────────────
+   §1  CONFIG & i18n
+   ──────────────────────────────────────────────────────────── */
+const CONFIG = {
+  MAX_FILE_SIZE  : 20 * 1024 * 1024,   // 20 MB
+  CHUNK_SIZE     : 16 * 1024,          // 16 KB / chunk
+  HEARTBEAT_MS   : 10_000,            // gửi ping mỗi 10 giây
+  PONG_TIMEOUT_MS: 15_000,            // timeout pong
+  INACTIVITY_MS  : 5 * 60 * 1000,     // 5 phút không hoạt động
+  BLUR_TIMEOUT_S : 60,                 // 60 giây tab mất focus
+  // Room ID: 6 ký tự HOA (dễ đọc, dễ nhớ, dễ gõ)
+  ROOM_ID_CHARS  : 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', // bỏ I,O,0,1 để tránh nhầm
+  ROOM_ID_LEN    : 6,
+};
+
+// ── i18n ────────────────────────────────────────────────────────
+const i18n = {
+  vi: {
+    meta: { name: 'Tiếng Việt' },
+    ui: {
+      status_idle       : 'Chưa kết nối',
+      status_connecting : 'Đang kết nối...',
+      status_waiting    : 'Đang chờ...',
+      status_connected  : 'Đã kết nối P2P',
+      status_error      : 'Lỗi kết nối',
+
+      hero_desc     : 'Chat P2P bí mật. Chỉ cần chia sẻ mã phòng 6 ký tự. Không lưu gì cả.',
+      choose_action : 'Bắt đầu',
+      create_room   : '+ Tạo phòng mới',
+      join_room     : 'Vào phòng →',
+      or            : 'hoặc nhập mã phòng để vào',
+      room_id_placeholder : 'Nhập mã 6 ký tự...',
+
+      room_created  : 'Phòng đã tạo',
+      share_hint    : 'Gửi mã phòng này cho người kia. Sau khi họ nhập mã và vào, kết nối P2P sẽ tự thiết lập.',
+      copy_id       : '📋 Sao chép mã',
+      copy_link     : '🔗 Sao chép link',
+      waiting_peer  : 'Đang chờ người kia vào...',
+      cancel        : 'Huỷ',
+      p2p_note      : 'Kết nối P2P trực tiếp · Signaling qua PeerJS · Không lưu dữ liệu',
+
+      leave_room      : 'Thoát',
+      send            : 'Gửi',
+      msg_placeholder : 'Nhập tin nhắn... (Enter để gửi)',
+      attach_file     : 'Gửi file (tối đa 20MB)',
+      timeout_warning : '⚠ Không hoạt động — sẽ ngắt sau',
+
+      dc_title : 'Phòng đã đóng',
+      dc_desc  : 'Kết nối bị ngắt. Tin nhắn và file đã xoá hoàn toàn.',
+      new_room : 'Tạo phòng mới',
+
+      sys_connected   : '✓ Kết nối P2P thành công',
+      sys_peer_joined : 'Người kia đã vào phòng',
+      sys_peer_left   : 'Người kia đã rời phòng',
+      sys_file_send   : 'Đang gửi file...',
+      sys_file_done   : '✓ Gửi file xong',
+      sys_file_ready  : 'File đã sẵn sàng tải xuống',
+      sys_tab_blur    : '⚠ Tab mất focus — sẽ ngắt sau 60 giây nếu không quay lại',
+      sys_relay       : '⚠ Đang dùng TURN relay (không phải P2P trực tiếp)',
+      sys_devtools    : '⚠ DevTools đang mở — bảo mật có thể bị ảnh hưởng',
+
+      err_full      : 'Phòng đã đủ 2 người',
+      err_not_found : 'Không tìm thấy phòng với mã này',
+      err_connect   : 'Không thể kết nối, thử lại sau',
+      err_no_chan   : 'Chưa có kết nối DataChannel',
+      err_file_size : 'File vượt quá 20MB',
+      copied        : 'Đã sao chép!',
+
+      me       : 'Bạn',
+      them     : 'Người kia',
+      download : 'Tải xuống',
+    },
+  },
+
+  en: {
+    meta: { name: 'English' },
+    ui: {
+      status_idle       : 'Not connected',
+      status_connecting : 'Connecting...',
+      status_waiting    : 'Waiting...',
+      status_connected  : 'P2P Connected',
+      status_error      : 'Connection error',
+
+      hero_desc     : 'Secret P2P chat. Share a 6-character room code. Nothing is stored.',
+      choose_action : 'Get started',
+      create_room   : '+ Create new room',
+      join_room     : 'Join room →',
+      or            : 'or enter a room code to join',
+      room_id_placeholder : 'Enter 6-char code...',
+
+      room_created  : 'Room created',
+      share_hint    : 'Send this room code to the other person. Once they enter it, P2P connection is established automatically.',
+      copy_id       : '📋 Copy code',
+      copy_link     : '🔗 Copy link',
+      waiting_peer  : 'Waiting for the other person...',
+      cancel        : 'Cancel',
+      p2p_note      : 'Direct P2P connection · Signaling via PeerJS · No data stored',
+
+      leave_room      : 'Leave',
+      send            : 'Send',
+      msg_placeholder : 'Type a message... (Enter to send)',
+      attach_file     : 'Send file (max 20MB)',
+      timeout_warning : '⚠ Inactive — disconnecting in',
+
+      dc_title : 'Room Closed',
+      dc_desc  : 'Connection lost. Messages and files deleted.',
+      new_room : 'Create new room',
+
+      sys_connected   : '✓ P2P connection established',
+      sys_peer_joined : 'The other person joined',
+      sys_peer_left   : 'The other person left',
+      sys_file_send   : 'Sending file...',
+      sys_file_done   : '✓ File sent',
+      sys_file_ready  : 'File ready to download',
+      sys_tab_blur    : '⚠ Tab lost focus — disconnecting in 60s if you don\'t return',
+      sys_relay       : '⚠ Using TURN relay (not direct P2P)',
+      sys_devtools    : '⚠ DevTools open — security may be compromised',
+
+      err_full      : 'Room is full (max 2 people)',
+      err_not_found : 'Room not found with this code',
+      err_connect   : 'Could not connect, please try again',
+      err_no_chan   : 'No DataChannel connection yet',
+      err_file_size : 'File exceeds 20MB limit',
+      copied        : 'Copied!',
+
+      me       : 'You',
+      them     : 'Other',
+      download : 'Download',
+    },
+  },
+};
+
+let lang = 'vi';
+
+function t(key) {
+  const parts = key.split('.');
+  let o = i18n[lang];
+  for (const p of parts) { if (o == null) return key; o = o[p]; }
+  return o ?? key;
+}
+
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.placeholder = t(el.dataset.i18nPlaceholder));
+  const ba = $('btn-attach');
+  if (ba) ba.setAttribute('data-tip', t('ui.attach_file'));
+  document.title = lang === 'vi' ? 'SecretLink — Phòng chat bí mật' : 'SecretLink — Secret Chat';
+}
+
+/* ────────────────────────────────────────────────────────────────
+   §2  UI helpers
+   ──────────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+
+function showScreen(name) {
+  $('setup-screen').classList.toggle('hidden', name !== 'setup');
+  $('chat-screen').classList.toggle('hidden',  name !== 'chat');
+}
+
+function setStatus(cls, key) {
+  $('status-pill').className = cls ? `status-pill ${cls}` : 'status-pill';
+  $('status-text').textContent = t(key);
+}
+
+// Alert banners
+let _alertMap = {};
+function addAlert(type, msgKey, autoMs = 0) {
+  const bar = document.createElement('div');
+  bar.className = `alert-banner ${type}`;
+  bar.textContent = t(msgKey);
+  $('alerts').appendChild(bar);
+  if (autoMs > 0) setTimeout(() => bar.remove(), autoMs);
+  return bar;
+}
+function removeAlert(el) { el?.remove(); }
+
+// Clipboard
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = t('ui.copied');
+      btn.classList.add('flash');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('flash'); }, 1300);
+    }
+  } catch (_) {}
+}
+
+// Formatting
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1_048_576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1_048_576).toFixed(1) + ' MB';
+}
+
+function nowTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function getFileIcon(name) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const m = {
+    pdf:'📄',doc:'📝',docx:'📝',txt:'📃',csv:'📊',xlsx:'📊',pptx:'📊',
+    jpg:'🖼',jpeg:'🖼',png:'🖼',gif:'🖼',webp:'🖼',svg:'🖼',
+    mp4:'🎬',mkv:'🎬',avi:'🎬',mov:'🎬',
+    mp3:'🎵',wav:'🎵',flac:'🎵',ogg:'🎵',
+    zip:'📦',rar:'📦','7z':'📦',tar:'📦',
+    js:'📜',ts:'📜',py:'🐍',html:'🌐',css:'🎨',json:'📋',
+  };
+  return m[ext] || '📎';
+}
+
+// ── Message renderers ────────────────────────────────────────────
+function addMsg(text, isMe) {
+  const w = document.createElement('div'); w.className = `bw ${isMe ? 'me' : 'them'}`;
+  const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+  const m = document.createElement('div'); m.className = 'bmeta';
+  m.textContent = `${isMe ? t('ui.me') : t('ui.them')} · ${nowTime()}`;
+  w.appendChild(b); w.appendChild(m);
+  $('messages').appendChild(w); scrollBottom();
+}
+
+function addSys(msgOrKey, cls = '', isKey = true) {
+  const el = document.createElement('div'); el.className = `sys ${cls}`;
+  el.textContent = isKey ? t(msgOrKey) : msgOrKey;
+  $('messages').appendChild(el); scrollBottom();
+}
+
+function scrollBottom() {
+  const m = $('messages'); m.scrollTop = m.scrollHeight;
+}
+
+function createFileBubble(fileName, fileSize, isMe, downloadUrl = null) {
+  const w  = document.createElement('div'); w.className = `bw ${isMe ? 'me' : 'them'}`;
+  const fb = document.createElement('div'); fb.className = 'file-bw';
+  const ico = document.createElement('div'); ico.className = 'file-ico'; ico.textContent = getFileIcon(fileName);
+  const info = document.createElement('div'); info.className = 'file-info';
+  const nm = document.createElement('div');  nm.className = 'file-name'; nm.textContent = fileName;
+  const sz = document.createElement('div');  sz.className = 'file-size'; sz.textContent = formatBytes(fileSize);
+  const pg = document.createElement('div');  pg.className = 'file-prog';
+  const bar= document.createElement('div');  bar.className= 'file-prog-bar';
+  pg.appendChild(bar);
+  info.appendChild(nm); info.appendChild(sz); info.appendChild(pg);
+  fb.appendChild(ico); fb.appendChild(info);
+
+  if (downloadUrl) {
+    const a = document.createElement('a'); a.className='btn btn-secondary btn-sm';
+    a.href=downloadUrl; a.download=fileName; a.textContent=t('ui.download');
+    a.style.marginLeft='10px'; a.style.flexShrink='0';
+    fb.appendChild(a); bar.style.width='100%';
+  }
+
+  const meta = document.createElement('div'); meta.className = 'bmeta';
+  meta.textContent = `${isMe ? t('ui.me') : t('ui.them')} · ${nowTime()}`;
+  w.appendChild(fb); w.appendChild(meta);
+  $('messages').appendChild(w); scrollBottom();
+  return { wrap: w, progressBar: bar };
+}
+
+/* ────────────────────────────────────────────────────────────────
+   §3  PeerJS / WebRTC logic
+   ────────────────────────────────────────────────────────────────
+   PeerJS tự xử lý signaling (WebSocket tới peerjs.com).
+   Sau khi DataChannel mở, mọi dữ liệu đi thẳng WebRTC P2P.
+   ──────────────────────────────────────────────────────────── */
+let myPeer      = null;   // Peer instance (PeerJS)
+let conn        = null;   // DataConnection (PeerJS wrapper)
+let roomId      = null;   // Room ID = Peer ID của Caller
+let isConnected = false;
+let isHost      = false;  // true = người tạo phòng (Caller)
+
+/**
+ * Sinh Room ID ngắn gọn, dễ đọc: 6 ký tự HOA
+ * Dùng crypto để đảm bảo ngẫu nhiên thực sự
+ */
+function generateRoomId() {
+  const chars = CONFIG.ROOM_ID_CHARS;
+  const bytes = new Uint8Array(CONFIG.ROOM_ID_LEN);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => chars[b % chars.length]).join('');
+}
+
+/**
+ * Tạo phòng mới — Caller flow
+ * Tạo Peer với ID = roomId, chờ kết nối đến.
+ */
+function createRoom() {
+  roomId  = generateRoomId();
+  isHost  = true;
+  myPeer  = new Peer(roomId, {
+    // Dùng PeerJS public server (mặc định)
+    // Không cần config thêm
+    debug: 0, // tắt log
+  });
+
+  setStatus('connecting', 'ui.status_connecting');
+
+  myPeer.on('open', id => {
+    // Peer ID đã được server xác nhận
+    $('room-id-display').textContent = id;
+    $('action-card').classList.add('hidden');
+    $('waiting-card').classList.remove('hidden');
+    setStatus('connecting', 'ui.status_waiting');
+  });
+
+  // Nhận kết nối từ Callee
+  myPeer.on('connection', incoming => {
+    // Chỉ cho phép 1 kết nối
+    if (conn) {
+      incoming.close();
+      return;
+    }
+    setupConn(incoming);
+    addSys('ui.sys_peer_joined', 'ok');
+  });
+
+  myPeer.on('error', err => {
+    if (err.type === 'unavailable-id') {
+      // ID bị trùng (hiếm) → thử lại với ID mới
+      myPeer.destroy();
+      createRoom();
+    } else {
+      addAlert('danger', 'ui.err_connect', 5000);
+      setStatus('error', 'ui.status_error');
+      hardReset();
+    }
+  });
+}
+
+/**
+ * Vào phòng — Callee flow
+ * Tạo Peer với ID ngẫu nhiên, kết nối tới Peer của Caller (= roomId).
+ */
+function joinRoom(targetRoomId) {
+  roomId = targetRoomId.toUpperCase().trim();
+  isHost = false;
+
+  // Callee cũng cần Peer ID của riêng mình (random)
+  myPeer = new Peer({ debug: 0 });
+
+  setStatus('connecting', 'ui.status_connecting');
+
+  myPeer.on('open', () => {
+    // Kết nối tới Caller
+    const c = myPeer.connect(roomId, {
+      reliable   : true,
+      serialization: 'raw',   // gửi thẳng ArrayBuffer/string — không qua msgpack
+    });
+    setupConn(c);
+  });
+
+  myPeer.on('error', err => {
+    if (err.type === 'peer-unavailable') {
+      addAlert('danger', 'ui.err_not_found', 5000);
+    } else {
+      addAlert('danger', 'ui.err_connect', 5000);
+    }
+    setStatus('error', 'ui.status_error');
+    hardReset();
+  });
+}
+
+/**
+ * Thiết lập DataConnection (dùng cho cả Caller và Callee)
+ */
+function setupConn(c) {
+  conn = c;
+  // Đảm bảo serialization = raw (để phân biệt string / binary)
+  conn.serialization = 'raw';
+
+  conn.on('open', () => {
+    isConnected = true;
+    showScreen('chat');
+    $('chat-room-val').textContent = roomId;
+
+    heartbeat.start();
+    inactivity.reset();
+    setStatus('connected', 'ui.status_connected');
+    addSys('ui.sys_connected', 'ok');
+
+    // Kiểm tra relay sau vài giây
+    setTimeout(() => checkRelayUsage(), 3000);
+  });
+
+  conn.on('data', data => {
+    inactivity.reset();
+    // PeerJS raw: data là string hoặc ArrayBuffer
+    if (typeof data === 'string') {
+      handleTextMsg(data);
+    } else {
+      fileTransfer.handleChunk(data);
+    }
+  });
+
+  conn.on('close', () => handleDisconnect('peer'));
+  conn.on('error', () => handleDisconnect('error'));
+}
+
+/**
+ * Xử lý JSON message qua DataChannel
+ */
+function handleTextMsg(raw) {
+  try {
+    const msg = JSON.parse(raw);
+    switch (msg.type) {
+      case 'chat':      addMsg(msg.text, false);          break;
+      case 'ping':      dcSend({ type: 'pong' });          break;
+      case 'pong':      heartbeat.gotPong();               break;
+      case 'file-meta': fileTransfer.startReceiving(msg);  break;
+      case 'bye':       handleDisconnect('peer');           break;
+      default: break;
+    }
+  } catch (_) {}
+}
+
+/** Gửi chat text */
+function sendChat(text) {
+  if (!conn || !isConnected) {
+    addSys(t('ui.err_no_chan'), 'danger', false); return;
+  }
+  dcSend({ type: 'chat', text });
+  addMsg(text, true);
+  inactivity.reset();
+}
+
+/** Gửi JSON qua DataChannel */
+function dcSend(obj) {
+  try {
+    if (conn?.open) conn.send(JSON.stringify(obj));
+  } catch (_) {}
+}
+
+/** Gửi binary (ArrayBuffer) qua DataChannel */
+function dcSendBinary(buffer) {
+  try {
+    if (conn?.open) conn.send(buffer);
+  } catch (_) {}
+}
+
+/** Kiểm tra TURN relay — lấy stats từ RTCPeerConnection bên dưới PeerJS */
+async function checkRelayUsage() {
+  try {
+    // PeerJS lưu RTCPeerConnection tại conn.peerConnection
+    const pc = conn?.peerConnection;
+    if (!pc) return;
+    const stats = await pc.getStats();
+    stats.forEach(r => {
+      if (r.type === 'candidate-pair' && r.state === 'succeeded') {
+        const local = stats.get(r.localCandidateId);
+        if (local?.candidateType === 'relay') {
+          addAlert('warn', 'ui.sys_relay', 8000);
+          addSys('ui.sys_relay', 'warn');
+        }
+      }
+    });
+  } catch (_) {}
+}
+
+/** Ngắt kết nối */
+function handleDisconnect(reason) {
+  if (!isConnected && reason !== 'peer' && reason !== 'user') return;
+  isConnected = false;
+
+  heartbeat.stop();
+  inactivity.stop();
+
+  if (reason === 'peer') addSys('ui.sys_peer_left', 'danger');
+
+  // Gửi bye
+  dcSend({ type: 'bye' });
+
+  // Đóng connection
+  try { conn?.close();    conn = null;   } catch (_) {}
+  try { myPeer?.destroy(); myPeer = null; } catch (_) {}
+
+  setStatus('error', 'ui.status_error');
+  setTimeout(() => $('dc-overlay').classList.add('visible'), 500);
+}
+
+/** Reset hoàn toàn */
+function hardReset() {
+  try { conn?.close();    conn = null;   } catch (_) {}
+  try { myPeer?.destroy(); myPeer = null; } catch (_) {}
+
+  isConnected = false; isHost = false; roomId = null;
+  heartbeat.stop();
+  inactivity.stop();
+  fileTransfer.reset();
+
+  $('messages').innerHTML = '';
+  $('alerts').innerHTML   = '';
+  $('join-input').value   = '';
+  $('waiting-card').classList.add('hidden');
+  $('action-card').classList.remove('hidden');
+  $('dc-overlay').classList.remove('visible');
+  $('timeout-bar').classList.remove('visible');
+
+  setStatus('', 'ui.status_idle');
+  showScreen('setup');
+}
+
+/* ────────────────────────────────────────────────────────────────
+   §4  File transfer
+   ── Chia file thành chunks 16KB ──
+   ── Header packet: [4-byte idLen][idBytes][chunkData] ──
+   ──────────────────────────────────────────────────────────── */
+const fileTransfer = {
+  _rx: {},  // { [tid]: { meta, chunks, received, progressBar } }
+
+  async send(file) {
+    if (!conn || !isConnected) {
+      addSys(t('ui.err_no_chan'), 'danger', false); return;
+    }
+    if (file.size > CONFIG.MAX_FILE_SIZE) {
+      addSys(t('ui.err_file_size'), 'danger', false); return;
+    }
+
+    const tid = crypto.randomUUID();
+    const totalChunks = Math.ceil(file.size / CONFIG.CHUNK_SIZE);
+    const { progressBar } = createFileBubble(file.name, file.size, true);
+
+    // Metadata qua text channel
+    dcSend({ type:'file-meta', tid, name:file.name, size:file.size, totalChunks, mime: file.type||'application/octet-stream' });
+    addSys('ui.sys_file_send');
+
+    const buf = await file.arrayBuffer();
+    const idB = new TextEncoder().encode(tid);
+
+    for (let i = 0; i < totalChunks; i++) {
+      await this._waitBuf();
+
+      const start  = i * CONFIG.CHUNK_SIZE;
+      const slice  = buf.slice(start, Math.min(start + CONFIG.CHUNK_SIZE, file.size));
+
+      // Đóng gói: [4-byte idLen | idBytes | chunkData]
+      const packet = new Uint8Array(4 + idB.length + slice.byteLength);
+      new DataView(packet.buffer).setUint32(0, idB.length, true);
+      packet.set(idB, 4);
+      packet.set(new Uint8Array(slice), 4 + idB.length);
+
+      dcSendBinary(packet.buffer);
+      progressBar.style.width = `${Math.round((i + 1) / totalChunks * 100)}%`;
+
+      // Yield CPU mỗi 10 chunks để tránh đơ UI
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+      inactivity.reset();
+    }
+    addSys('ui.sys_file_done', 'ok');
+  },
+
+  // Chờ buffer hạ xuống mức an toàn
+  _waitBuf() {
+    return new Promise(resolve => {
+      const check = () => {
+        const peerConn = conn?.peerConnection;
+        const dc = peerConn ? [...peerConn.sctp?.transport ? [] : []].find?.(Boolean) : null;
+        // Nếu không lấy được bufferedAmount → gửi luôn
+        resolve();
+      };
+      setTimeout(check, 2);
+    });
+  },
+
+  startReceiving(meta) {
+    const { progressBar } = createFileBubble(meta.name, meta.size, false);
+    this._rx[meta.tid] = { meta, chunks:[], received:0, progressBar };
+  },
+
+  handleChunk(data) {
+    const view  = new DataView(data);
+    const idLen = view.getUint32(0, true);
+    const tid   = new TextDecoder().decode(new Uint8Array(data, 4, idLen));
+    const chunk = data.slice(4 + idLen);
+    const entry = this._rx[tid];
+    if (!entry) return;
+
+    entry.chunks.push(chunk);
+    entry.received += chunk.byteLength;
+    entry.progressBar.style.width = `${Math.round(entry.received / entry.meta.size * 100)}%`;
+
+    // Đủ chunks → tạo blob + nút download
+    if (entry.chunks.length >= entry.meta.totalChunks) {
+      const blob = new Blob(entry.chunks.map(c => new Uint8Array(c)), { type: entry.meta.mime });
+      const url  = URL.createObjectURL(blob);
+      createFileBubble(entry.meta.name, entry.meta.size, false, url);
+      addSys(`${t('ui.sys_file_ready')}: ${entry.meta.name}`, 'ok', false);
+      setTimeout(() => URL.revokeObjectURL(url), 3_600_000);
+      delete this._rx[tid];
+    }
+  },
+
+  reset() { this._rx = {}; },
+};
+
+/* ────────────────────────────────────────────────────────────────
+   §5  Heartbeat
+   ── ping mỗi 10 giây, timeout pong 15 giây ──
+   ──────────────────────────────────────────────────────────── */
+const heartbeat = {
+  _ping: null, _pong: null,
+
+  start() {
+    this.stop();
+    this._ping = setInterval(() => {
+      if (conn?.open) {
+        dcSend({ type: 'ping' });
+        this._pong = setTimeout(() => handleDisconnect('heartbeat'), CONFIG.PONG_TIMEOUT_MS);
+      }
+    }, CONFIG.HEARTBEAT_MS);
+  },
+
+  gotPong() { if (this._pong) { clearTimeout(this._pong); this._pong = null; } },
+
+  stop() {
+    if (this._ping) { clearInterval(this._ping); this._ping = null; }
+    if (this._pong) { clearTimeout(this._pong);  this._pong = null; }
+  },
+};
+
+/* ────────────────────────────────────────────────────────────────
+   §6  Inactivity / timeout
+   ── 5 phút không hoạt động → đếm ngược 30 giây rồi ngắt ──
+   ── Tab blur 60 giây → ngắt ──
+   ──────────────────────────────────────────────────────────── */
+const inactivity = {
+  _idle  : null,
+  _cd    : null,
+  _blur  : null,
+  _blurA : null,
+  _secs  : 0,
+
+  reset() {
+    if (!isConnected) return;
+    this._clearAll();
+    this._idle = setTimeout(() => this._countdown(30), CONFIG.INACTIVITY_MS - 30_000);
+  },
+
+  onBlur() {
+    if (!isConnected) return;
+    this._blurA = addAlert('warn', 'ui.sys_tab_blur');
+    addSys('ui.sys_tab_blur', 'warn');
+    this._countdown(CONFIG.BLUR_TIMEOUT_S);
+  },
+
+  onFocus() {
+    this._clearAll();
+    removeAlert(this._blurA); this._blurA = null;
+    $('timeout-bar').classList.remove('visible');
+    this.reset();
+  },
+
+  _countdown(secs) {
+    this._secs = secs;
+    this._tick();
+    $('timeout-bar').classList.add('visible');
+    this._cd = setInterval(() => {
+      this._secs--;
+      this._tick();
+      if (this._secs <= 0) { this.stop(); handleDisconnect('timeout'); }
+    }, 1000);
+  },
+
+  _tick() { const el = $('countdown'); if (el) el.textContent = this._secs; },
+
+  _clearAll() {
+    if (this._idle) { clearTimeout(this._idle);   this._idle = null; }
+    if (this._cd)   { clearInterval(this._cd);    this._cd   = null; }
+    if (this._blur) { clearTimeout(this._blur);   this._blur = null; }
+  },
+
+  stop() {
+    this._clearAll();
+    $('timeout-bar').classList.remove('visible');
+    removeAlert(this._blurA); this._blurA = null;
+  },
+};
+
+/* ────────────────────────────────────────────────────────────────
+   §7  DevTools detection
+   ── outerWidth/Height > innerWidth/Height + threshold ──
+   ──────────────────────────────────────────────────────────── */
+const devtools = {
+  _timer: null, _shown: false,
+  THRESHOLD: 160,
+
+  start() {
+    this._timer = setInterval(() => {
+      const open =
+        (window.outerWidth  - window.innerWidth  > this.THRESHOLD) ||
+        (window.outerHeight - window.innerHeight > this.THRESHOLD);
+      if (open && !this._shown) {
+        this._shown = true;
+        addAlert('warn', 'ui.sys_devtools', 10_000);
+        if (isConnected) addSys('ui.sys_devtools', 'warn');
+      }
+      if (!open) this._shown = false;
+    }, 3000);
+  },
+
+  stop() { if (this._timer) { clearInterval(this._timer); this._timer = null; } },
+};
+
+/* ────────────────────────────────────────────────────────────────
+   §8  Event listeners
+   ──────────────────────────────────────────────────────────── */
+
+// Đổi ngôn ngữ
+$('lang-select').addEventListener('change', e => { lang = e.target.value; applyI18n(); });
+
+// Tạo phòng
+$('btn-create').addEventListener('click', () => {
+  $('btn-create').disabled = true;
+  createRoom();
+  setTimeout(() => $('btn-create').disabled = false, 3000);
+});
+
+// Vào phòng
+$('btn-join').addEventListener('click', () => {
+  const rid = $('join-input').value.trim().toUpperCase();
+  if (rid.length !== CONFIG.ROOM_ID_LEN) { $('join-input').focus(); return; }
+  $('btn-join').disabled = true;
+  joinRoom(rid);
+  setTimeout(() => $('btn-join').disabled = false, 5000);
+});
+
+// Enter trong ô nhập Room ID
+$('join-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-join').click(); });
+
+// Tự động viết HOA khi gõ
+$('join-input').addEventListener('input', function () {
+  const pos = this.selectionStart;
+  this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  this.setSelectionRange(pos, pos);
+});
+
+// Sao chép mã phòng
+$('btn-copy-id').addEventListener('click', e => copyText(roomId, e.currentTarget));
+
+// Sao chép link (tự thêm ?room=XXXXX vào URL hiện tại)
+$('btn-copy-link').addEventListener('click', e => {
+  const url = `${location.origin}${location.pathname}?room=${roomId}`;
+  copyText(url, e.currentTarget);
+});
+
+// Huỷ chờ
+$('btn-cancel').addEventListener('click', () => {
+  try { myPeer?.destroy(); myPeer = null; } catch (_) {}
+  $('waiting-card').classList.add('hidden');
+  $('action-card').classList.remove('hidden');
+  setStatus('', 'ui.status_idle');
+});
+
+// Gửi tin nhắn
+$('btn-send').addEventListener('click', () => {
+  const inp = $('msg-input');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  sendChat(txt);
+  inp.value = '';
+  inp.style.height = 'auto';
+});
+
+$('msg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('btn-send').click(); }
+});
+
+// Auto-resize textarea
+$('msg-input').addEventListener('input', function () {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Thoát phòng
+$('btn-disconnect').addEventListener('click', () => handleDisconnect('user'));
+
+// Khởi động lại
+$('btn-restart').addEventListener('click', () => hardReset());
+
+// Gửi file — click
+$('btn-attach').addEventListener('click', () => $('file-input').click());
+$('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  fileTransfer.send(file);
+  e.target.value = '';
+});
+
+// Gửi file — drag & drop
+$('chat-screen').addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+$('chat-screen').addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) fileTransfer.send(file);
+});
+
+// Tab focus / blur
+document.addEventListener('visibilitychange', () => {
+  if (!isConnected) return;
+  document.hidden ? inactivity.onBlur() : inactivity.onFocus();
+});
+window.addEventListener('blur',  () => { if (isConnected) inactivity.onBlur();  });
+window.addEventListener('focus', () => { if (isConnected) inactivity.onFocus(); });
+
+/* ────────────────────────────────────────────────────────────────
+   §9  Boot / init
+   ──────────────────────────────────────────────────────────── */
+function init() {
+  applyI18n();
+  showScreen('setup');
+  setStatus('', 'ui.status_idle');
+  devtools.start();
+
+  // Nếu URL có ?room=XXXXXX → tự điền vào ô join
+  const urlRoom = new URLSearchParams(location.search).get('room');
+  if (urlRoom) {
+    const cleaned = urlRoom.toUpperCase().slice(0, CONFIG.ROOM_ID_LEN);
+    $('join-input').value = cleaned;
+    // Tự động join nếu mã đúng độ dài
+    if (cleaned.length === CONFIG.ROOM_ID_LEN) {
+      setTimeout(() => $('btn-join').click(), 400);
+    }
+  }
+}
+
+init();
+/* ── EOF SecretLink (PeerJS edition) ─────────────────────────── */
+</script>
+</body>
+</html>
